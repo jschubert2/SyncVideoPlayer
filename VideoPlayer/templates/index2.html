@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synchronized Video Player</title>
+    <script src="https://cdn.socket.io/4.5.1/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Synchronized Video Player</h1>
+    <button id="playButton">Play</button>
+    <video id="videoPlayer" controls width="800">
+        <source id="videoSource" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+
+    <p id="currentSong"></p>
+    <p id="errorMessage" style="color: red;"></p>
+
+    <script>
+        let isSyncing = false;  // Flag to prevent emitting the play_pause event during synchronization
+        let hasUserInteracted = false; // Track if user interacted with the page
+
+        const socket = io();
+        const videoPlayer = document.getElementById("videoPlayer");
+        const videoSource = document.getElementById("videoSource");
+        const currentSong = document.getElementById("currentSong");
+        const errorMessage = document.getElementById("errorMessage");
+        const playButton = document.getElementById("playButton");
+
+        playButton.addEventListener("click", () => {
+            hasUserInteracted = true;
+
+        });
+
+        // Request the current state from the server
+        socket.emit("sync_request");
+
+        socket.on("sync_state", (state) => {
+            isSyncing = true;
+            if (state.error) {
+                errorMessage.textContent = state.error;
+                return;
+            }
+
+            const { song_name, timestamp, paused } = state;
+
+            // Update the video source dynamically if song_name changes
+            const newVideoSrc = `/video/${song_name}`;
+            if (videoSource.src !== `${window.location.origin}${newVideoSrc}`) {
+                videoSource.src = newVideoSrc;
+                videoPlayer.load();
+            }
+
+            // Display current song name
+            currentSong.textContent = `Now Playing: ${song_name}`;
+
+            // Sync the video timestamp
+            if (Math.abs(videoPlayer.currentTime - timestamp) > 0.5) {
+                videoPlayer.currentTime = timestamp;
+            }
+
+            // Sync playback status
+            if (paused && !videoPlayer.paused) {
+                videoPlayer.pause();
+            } else if (!paused && videoPlayer.paused && hasUserInteracted) {
+                // Only attempt to play if the user has interacted
+                videoPlayer.play();
+            }
+
+            isSyncing = false;
+        });
+
+        // Notify the server of playback changes
+        function updateServerState() {
+            // Only emit if we're not already syncing (i.e., prevent emitting during sync)
+            if (isSyncing) return; // Do not emit events during synchronization
+            socket.emit("play_pause", {
+                song_name: currentSong.textContent.replace("Now Playing: ", ""),
+                current_time: videoPlayer.currentTime,
+                paused: videoPlayer.paused,
+            });
+        }
+
+        // Add event listeners to monitor user interaction
+        // Add event listeners
+        videoPlayer.addEventListener("play", () => {
+            if (!isSyncing) updateServerState();
+        });
+        videoPlayer.addEventListener("pause", () => {
+            if (!isSyncing) updateServerState();
+        });
+        videoPlayer.addEventListener("seeked", updateServerState);
+
+
+
+    </script>
+
+</body>
+</html>
