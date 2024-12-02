@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synchronized Video Player</title>
+    <script src="https://cdn.socket.io/4.5.1/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>Synchronized MP4 Video Player</h1>
+    <video id="videoPlayer" controls width="800">
+        <source id="videoSource" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+
+    <script>
+        const socket = io();
+        const videoPlayer = document.getElementById("videoPlayer");
+        const videoSource = document.getElementById("videoSource");
+        let c_v;
+        let st_v;
+        let song_name_v;
+        let i = 0;
+
+        // Sync playback when joining
+        socket.emit("sync_request");
+
+        // Receive and apply sync state
+        socket.on("sync_state", (state) => {
+            console.log(state);
+
+
+            const { song_name, c, st } = state;
+
+            //not so sure about this
+            const newVideoSrc = `/video/${song_name}`;
+            if (videoSource.src !== `${window.location.origin}${newVideoSrc}`) {
+                videoSource.src = newVideoSrc;
+                videoPlayer.load();
+            }
+
+            // Sync the video timestamp
+            if (Math.abs(videoPlayer.currentTime - c) > 0.5) {
+                videoPlayer.currentTime = c;
+            }
+
+            // Sync playback status
+            console.log(videoPlayer.paused);
+            console.log(st);
+            if (st == "Stop" && !videoPlayer.paused) {
+                videoPlayer.pause();
+                st_v = "Stop";
+            } else if (st == "Play" && videoPlayer.paused) {
+                videoPlayer.play();
+                st_v = "Play";
+            }
+            i=i+1;
+            console.log(i);
+            c_v = c;
+            song_name_v = song_name;
+        });
+
+        // Notify the server of playback changes
+        function updateServerState() {
+            socket.emit("update_state", {
+                song_name: song_name_v,
+                c: c_v,
+                st: st_v,
+            });
+        }
+
+        // Add event listeners to monitor user interaction
+        videoPlayer.addEventListener("play", updateServerState);
+        videoPlayer.addEventListener("pause", updateServerState);
+        videoPlayer.addEventListener("seeked", updateServerState);
+    </script>
+</body>
+</html>
